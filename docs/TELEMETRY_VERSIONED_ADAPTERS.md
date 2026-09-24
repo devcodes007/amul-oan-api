@@ -101,7 +101,16 @@ Before counting voice turns:
   get rejected.
 
 `voice-oan-api` stamps new voice traces with `amul.schema_version = voice.turn.v1`,
-`service` and `release`.
+`service` and `release` (voice-oan-api#308). A stamped trace is routed by the
+stamp, not the date:
+
+- Its era is the `voice_eras` entry with a matching `schema_version`. Until
+  eras.yaml has one, stamped traces are rejected. When the stamp goes live, add
+  that era with its prod-observed `valid_from` and `schema_version: voice.turn.v1`.
+- An unknown stamp, or a known stamp on the wrong root, is rejected.
+- Stamped turns have no extensions; the stamp already names the contract.
+- Unstamped `agent_journey` traces are read as v4 until `voice.v4` gets a
+  `valid_to`. Set it once every voice trace is stamped.
 
 ## Adding an era
 

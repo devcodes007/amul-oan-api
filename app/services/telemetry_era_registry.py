@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 class TelemetryEraRegistryError(ValueError):
@@ -18,6 +18,8 @@ class EraBoundary:
     valid_to: datetime | None
     valid_from_confidence: str | None
     root_trace_names: frozenset[str]
+    # The amul.schema_version stamp this era's traces carry, if any.
+    schema_version: str | None = None
 
 
 class TelemetryEraRegistry:
@@ -55,7 +57,11 @@ class TelemetryEraRegistry:
                 root_trace_names=frozenset(
                     value for value in raw_era.get("root_trace_names", []) if isinstance(value, str)
                 ),
+                schema_version=(
+                    raw_era.get("schema_version") if isinstance(raw_era.get("schema_version"), str) else None
+                ),
             )
+        _require_unique_schema_versions(eras.values())
         return cls(eras)
 
     def require(self, era_id: str) -> EraBoundary:
@@ -63,6 +69,9 @@ class TelemetryEraRegistry:
             return self._eras[era_id]
         except KeyError as exc:
             raise TelemetryEraRegistryError(f"telemetry/eras.yaml is missing {era_id}") from exc
+
+    def for_schema_version(self, schema_version: str) -> EraBoundary | None:
+        return next((era for era in self._eras.values() if era.schema_version == schema_version), None)
 
 
 def default_era_registry_path() -> Path:
@@ -88,6 +97,18 @@ def _parse_registry_file(path: str, mtime_ns: int, size: int) -> Any:
         raise TelemetryEraRegistryError("PyYAML is required to read telemetry/eras.yaml") from exc
     with open(path, encoding="utf-8") as registry_file:
         return yaml.safe_load(registry_file)
+
+
+def _require_unique_schema_versions(eras: Iterable[EraBoundary]) -> None:
+    seen: dict[str, str] = {}
+    for era in eras:
+        if era.schema_version is None:
+            continue
+        if era.schema_version in seen:
+            raise TelemetryEraRegistryError(
+                f"{seen[era.schema_version]} and {era.era_id} both declare schema_version {era.schema_version}"
+            )
+        seen[era.schema_version] = era.era_id
 
 
 def _as_utc_datetime(value: Any, era_id: str, field_name: str) -> datetime:
