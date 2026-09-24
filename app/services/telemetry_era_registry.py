@@ -26,7 +26,7 @@ class TelemetryEraRegistry:
         self._eras = dict(eras)
 
     @classmethod
-    def from_yaml(cls, path: Path) -> "TelemetryEraRegistry":
+    def from_yaml(cls, path: Path, *, section: str = "chat_eras") -> "TelemetryEraRegistry":
         try:
             import yaml
         except ImportError as exc:  # pragma: no cover - project already uses PyYAML
@@ -38,11 +38,11 @@ class TelemetryEraRegistry:
             raise TelemetryEraRegistryError(
                 f"Telemetry era registry not found at {path}. This adapter depends on PR #297."
             ) from exc
-        if not isinstance(payload, Mapping) or not isinstance(payload.get("chat_eras"), list):
-            raise TelemetryEraRegistryError("telemetry/eras.yaml has no chat_eras list")
+        if not isinstance(payload, Mapping) or not isinstance(payload.get(section), list):
+            raise TelemetryEraRegistryError(f"telemetry/eras.yaml has no {section} list")
 
         eras: dict[str, EraBoundary] = {}
-        for raw_era in payload["chat_eras"]:
+        for raw_era in payload[section]:
             if not isinstance(raw_era, Mapping) or not isinstance(raw_era.get("era_id"), str):
                 continue
             era_id = raw_era["era_id"]
