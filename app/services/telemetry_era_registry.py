@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -27,17 +28,7 @@ class TelemetryEraRegistry:
 
     @classmethod
     def from_yaml(cls, path: Path, *, section: str = "chat_eras") -> "TelemetryEraRegistry":
-        try:
-            import yaml
-        except ImportError as exc:  # pragma: no cover - project already uses PyYAML
-            raise TelemetryEraRegistryError("PyYAML is required to read telemetry/eras.yaml") from exc
-        try:
-            with path.open(encoding="utf-8") as registry_file:
-                payload = yaml.safe_load(registry_file)
-        except FileNotFoundError as exc:
-            raise TelemetryEraRegistryError(
-                f"Telemetry era registry not found at {path}. This adapter depends on PR #297."
-            ) from exc
+        payload = load_registry_file(path)
         if not isinstance(payload, Mapping) or not isinstance(payload.get(section), list):
             raise TelemetryEraRegistryError(f"telemetry/eras.yaml has no {section} list")
 
@@ -76,6 +67,27 @@ class TelemetryEraRegistry:
 
 def default_era_registry_path() -> Path:
     return Path(__file__).resolve().parents[2] / "telemetry" / "eras.yaml"
+
+
+def load_registry_file(path: Path) -> Any:
+    """Parsed eras.yaml, read-only. Adapters load it per trace, so each file version is parsed once."""
+    try:
+        stat = path.stat()
+    except FileNotFoundError as exc:
+        raise TelemetryEraRegistryError(
+            f"Telemetry era registry not found at {path}. This adapter depends on PR #297."
+        ) from exc
+    return _parse_registry_file(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=8)
+def _parse_registry_file(path: str, mtime_ns: int, size: int) -> Any:
+    try:
+        import yaml
+    except ImportError as exc:  # pragma: no cover - project already uses PyYAML
+        raise TelemetryEraRegistryError("PyYAML is required to read telemetry/eras.yaml") from exc
+    with open(path, encoding="utf-8") as registry_file:
+        return yaml.safe_load(registry_file)
 
 
 def _as_utc_datetime(value: Any, era_id: str, field_name: str) -> datetime:

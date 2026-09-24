@@ -89,8 +89,9 @@ Before counting voice turns:
 
 - `outcome_class` is `delivered`, `non_question`, `refused_or_blocked` or
   `failed`. Before v3 it is unavailable, not success; apply the "count as
-  success" convention in reporting and say so on the chart. Unknown outcomes
-  keep the raw value with no class.
+  success" convention in reporting and say so on the chart. An outcome missing
+  from the vocabulary keeps its raw value and is classed `unclassified`, so it
+  shows up in counts until it is added to eras.yaml.
 - One trace is one turn. Count `outcome_class == "delivered"` for delivered
   queries. Don't dedupe on `(session_id, process_id)`: `process_id` restarts
   every call and session ids are reused across calls.
