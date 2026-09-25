@@ -5,7 +5,9 @@ from app.services.telemetry_era_adapters import (
     ChatC3Adapter,
     UnsupportedTelemetryEra,
     adapt_chat_trace,
+    load_chat_mappings,
 )
+from app.services.telemetry_mappings import default_mappings_path
 from app.services.telemetry_era_registry import TelemetryEraRegistry
 
 
@@ -429,3 +431,64 @@ def test_resolver_adapts_c8_only_after_its_boundary_is_verified(verified_c8_regi
 
     assert turn.source_era == "chat.c8"
     assert turn.source_schema_version == "chat.c8.v1"
+
+
+def _stamped_chat_trace(stamp="chat.turn.v1"):
+    return {
+        "id": "redacted-stamped-trace",
+        "name": "chat.translation",
+        "timestamp": "2026-10-05T10:00:00Z",
+        "sessionId": "redacted-session",
+        "input": {
+            "query": "<redacted question>",
+            "channel": "web",
+            "source_lang": "gu",
+            "target_lang": "gu",
+            "persona": "farmer",
+        },
+        "output": "<redacted answer>",
+        "metadata": {
+            "amul.schema_version": stamp,
+            "service": "amul-oan-api",
+            "release": "test-release-sha",
+            "user_id": "redacted-user",
+            "pipeline": "translation",
+            "pipeline_profile": "oss",
+        },
+    }
+
+
+def test_stamped_chat_trace_uses_the_shared_mapping_engine_without_an_era_registry():
+    turn = adapt_chat_trace(
+        _stamped_chat_trace(),
+        scores=[{"name": "turn_outcome", "value": "success"}],
+    )
+
+    assert turn.source_era == "chat.turn.v1"
+    assert turn.source_schema_version == "chat.turn.v1"
+    assert turn.original_question == "<redacted question>"
+    assert turn.answer == "<redacted answer>"
+    assert turn.pipeline_profile == "oss"
+    assert turn.turn_outcome == "success"
+    assert turn.field_availability["pipeline_profile"] == "recorded"
+
+
+def test_unknown_stamped_chat_schema_is_rejected():
+    with pytest.raises(UnsupportedTelemetryEra, match="Unknown chat schema version"):
+        adapt_chat_trace(_stamped_chat_trace("chat.turn.v2"))
+
+
+def test_stamped_chat_field_rename_needs_only_a_mapping_change(tmp_path):
+    mappings_path = tmp_path / "chat.yaml"
+    mappings_path.write_text(
+        default_mappings_path("chat").read_text(encoding="utf-8")
+        + "\nchat.turn.v2:\n  extends: chat.turn.v1\n  fields:\n    pipeline_profile: [metadata.variant]\n",
+        encoding="utf-8",
+    )
+    trace = _stamped_chat_trace("chat.turn.v2")
+    trace["metadata"]["variant"] = trace["metadata"].pop("pipeline_profile")
+
+    turn = adapt_chat_trace(trace, chat_mappings=load_chat_mappings(mappings_path))
+
+    assert turn.source_schema_version == "chat.turn.v2"
+    assert turn.pipeline_profile == "oss"

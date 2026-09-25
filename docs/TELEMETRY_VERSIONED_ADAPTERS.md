@@ -7,6 +7,16 @@ adapter boundary rather than interpreting a trace name by itself:
 raw Langfuse trace bundle -> era resolver -> era-specific adapter -> CanonicalChatTurn
 ```
 
+New stamped chat traces take the same mapping path as voice:
+
+```
+raw stamped chat trace -> telemetry/mappings/chat.yaml -> CanonicalChatTurn
+```
+
+`chat.turn.v1` is read from `metadata.amul.schema_version`, before any date
+lookup. A compatible rename is a mapping-file change; historical, unstamped
+traces still use the documented era adapters.
+
 `telemetry/eras.yaml` is the source of truth for production-observed era dates
 and root trace names. The resolver uses both values: a root name can mean a
 different structure in different eras.

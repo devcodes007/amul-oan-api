@@ -24,7 +24,7 @@ the stamp existed are matched by root name and date.
 | --- | --- |
 | Add a metadata key | Add it to the contract file. No version change. |
 | Add an outcome value | Add it to the contract file and to `voice_outcome_vocabulary` in `telemetry/eras.yaml`. No version change. |
-| Rename or remove a key | Bump the schema version, add a contract file for it, and add the version to `telemetry/mappings/voice.yaml` (it can `extends` the old one and list only what moved). Chat still needs an adapter change until it moves to mappings. |
+| Rename or remove a key | Bump the schema version, add a contract file for it, and add the version to `telemetry/mappings/<channel>.yaml` (it can `extends` the old one and list only what moved). |
 | Rename the root, drop a trace field (`sessionId`, `userId`, input, output), or rename a key inside a metadata block | Same as a rename. The voice contract lists these too (`root`, `trace_fields`, `nested_keys`). |
 | Keep a key but change what it means | Same as a rename. Nothing can detect this for you. |
 

@@ -1,0 +1,18 @@
+# Where each canonical field lives in a stamped chat trace, per schema version.
+#
+# Paths are tried in order. Future compatible additions belong here; a new
+# Python adapter is only needed when the trace's structure or field semantics
+# change.
+chat.turn.v1:
+  root: chat.translation
+  fields:
+    session_id: [sessionId, session_id]
+    user_id: [metadata.user_id]
+    channel: [input.channel, metadata.channel]
+    pipeline: [metadata.pipeline]
+    pipeline_profile: [metadata.pipeline_profile, metadata.variant]
+    source_lang: [input.source_lang, metadata.source_lang]
+    target_lang: [input.target_lang, metadata.target_lang]
+    original_question: [input.query]
+    answer: [output]
+    persona: [input.persona, metadata.persona]
