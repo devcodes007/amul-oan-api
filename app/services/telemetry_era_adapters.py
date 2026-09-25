@@ -23,7 +23,7 @@ from app.services.telemetry_mappings import (
     default_mappings_path,
     load_mappings,
     mapping_or_none,
-    value_at,
+    mapped_values,
 )
 
 
@@ -444,51 +444,104 @@ def adapt_chat_trace(
             extensions.append("chat.c2b")
         if timestamp >= c2c.valid_from:
             extensions.append("chat.c2c")
-        return ChatC2Adapter.adapt(
-            ChatC2TraceSchema.model_validate(raw),
-            observations=observations,
-            scores=parsed_scores,
-            source_era_extensions=extensions,
-            user_id_semantics=(
-                "jwt_phone_then_query_param_then_anonymous"
-                if timestamp >= c2b.valid_from
-                else "query_param_then_anonymous"
+        return _apply_historical_chat_mapping(
+            ChatC2Adapter.adapt(
+                ChatC2TraceSchema.model_validate(raw),
+                observations=observations,
+                scores=parsed_scores,
+                source_era_extensions=extensions,
+                user_id_semantics=(
+                    "jwt_phone_then_query_param_then_anonymous"
+                    if timestamp >= c2b.valid_from
+                    else "query_param_then_anonymous"
+                ),
+                original_question=_c2_original_question(raw, related_traces),
             ),
-            original_question=_c2_original_question(raw, related_traces),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     if name == ChatC3Adapter._trace_name and c3.valid_from <= timestamp < c4.valid_from:
-        return ChatC3Adapter.adapt(
-            ChatC3TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+        return _apply_historical_chat_mapping(
+            ChatC3Adapter.adapt(
+                ChatC3TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+            ),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     if name == ChatC3Adapter._trace_name and c4.valid_from <= timestamp < c5.valid_from:
-        return ChatC4Adapter.adapt(
-            ChatC4TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+        return _apply_historical_chat_mapping(
+            ChatC4Adapter.adapt(
+                ChatC4TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+            ),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     if name == ChatC3Adapter._trace_name and c5.valid_from <= timestamp < (c3.valid_to or c6.valid_from):
-        return ChatC5Adapter.adapt(
-            ChatC5TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+        return _apply_historical_chat_mapping(
+            ChatC5Adapter.adapt(
+                ChatC5TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+            ),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     if name in c6.root_trace_names and c6.valid_from <= timestamp < c8.valid_from:
         extensions = _c6_extensions(timestamp, raw, parsed_scores, c6b=c6b, c6c=c6c, c7=c7)
-        return ChatC6Adapter.adapt(
-            ChatC6TraceSchema.model_validate(raw),
-            observations=observations,
-            scores=parsed_scores,
-            source_era_extensions=extensions,
+        return _apply_historical_chat_mapping(
+            ChatC6Adapter.adapt(
+                ChatC6TraceSchema.model_validate(raw),
+                observations=observations,
+                scores=parsed_scores,
+                source_era_extensions=extensions,
+            ),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     if name in c8.root_trace_names and timestamp >= c8.valid_from:
         if c8.valid_from_confidence != "high":
             raise UnsupportedTelemetryEra(
                 "chat.c8 has a low-confidence production boundary and needs validation before dispatch"
             )
-        return ChatC8Adapter.adapt(
-            ChatC8TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+        return _apply_historical_chat_mapping(
+            ChatC8Adapter.adapt(
+                ChatC8TraceSchema.model_validate(raw), observations=observations, scores=parsed_scores
+            ),
+            raw,
+            mappings=chat_mappings or load_chat_mappings(),
         )
     raise UnsupportedTelemetryEra(f"No adapter registered for trace name={name!r} timestamp={timestamp.isoformat()}")
 
 
 def load_chat_mappings(path: Path | None = None) -> dict[str, ContractMapping]:
     return load_mappings(path or default_mappings_path("chat"), allowed_fields=_MAPPED_FIELDS)
+
+
+def _apply_historical_chat_mapping(
+    turn: CanonicalChatTurn,
+    raw: Mapping[str, Any],
+    *,
+    mappings: Mapping[str, ContractMapping],
+) -> CanonicalChatTurn:
+    """Overlay normal fields from YAML; structural fields stay with the adapter."""
+
+    mapping = mappings.get(turn.source_schema_version)
+    if mapping is None:
+        raise UnsupportedTelemetryEra(f"No chat mapping registered for {turn.source_schema_version!r}")
+    values = mapped_values(mapping, raw, _MAPPED_FIELDS)
+    payload = turn.model_dump()
+    availability = dict(turn.field_availability)
+    for field, value in values.items():
+        if value is None:
+            continue
+        if field == "user_id":
+            payload.pop("user_id_hash", None)
+        elif field == "original_question":
+            payload.pop("question_sanitized", None)
+        elif field == "answer":
+            payload.pop("answer_sanitized", None)
+        payload[field] = value
+        availability[field] = "recorded"
+    payload["field_availability"] = availability
+    return CanonicalChatTurn.model_validate(payload)
 
 
 def _adapt_stamped_chat_trace(
@@ -505,13 +558,7 @@ def _adapt_stamped_chat_trace(
     if raw.get("name") != mapping.root:
         raise UnsupportedTelemetryEra(f"{stamp} is emitted on {mapping.root!r} roots, not {raw.get('name')!r}")
 
-    values = {
-        field: next(
-            (value for path in mapping.fields.get(field, ()) if (value := parse(value_at(raw, path))) is not None),
-            None,
-        )
-        for field, parse in _MAPPED_FIELDS.items()
-    }
+    values = mapped_values(mapping, raw, _MAPPED_FIELDS)
     score_values = {score.name: _string_or_none(score.value) for score in scores}
     availability = {field: _availability(value) for field, value in values.items()}
     availability.update(

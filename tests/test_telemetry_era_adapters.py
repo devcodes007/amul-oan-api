@@ -383,6 +383,32 @@ def test_resolver_uses_c5_schema_after_the_pipeline_profile_rename(era_registry)
     assert turn.field_availability["pipeline_profile"] == "recorded"
 
 
+def test_historical_chat_field_rename_needs_only_a_mapping_change(tmp_path, era_registry):
+    mappings_path = tmp_path / "chat.yaml"
+    mappings_path.write_text(
+        """
+chat.c5.v1:
+  root: Amul AI Agent
+  fields:
+    pipeline_profile: [metadata.renamed_profile]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    turn = adapt_chat_trace(
+        {
+            "name": "Amul AI Agent",
+            "timestamp": "2026-07-24T00:00:00Z",
+            "metadata": {"renamed_profile": "oss"},
+        },
+        era_registry=era_registry,
+        chat_mappings=load_chat_mappings(mappings_path),
+    )
+
+    assert turn.source_schema_version == "chat.c5.v1"
+    assert turn.pipeline_profile == "oss"
+
+
 def test_resolver_adapts_c6_root_input_and_categorical_scores(era_registry):
     turn = adapt_chat_trace(
         {

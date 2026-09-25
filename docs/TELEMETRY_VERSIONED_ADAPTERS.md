@@ -15,7 +15,9 @@ raw stamped chat trace -> telemetry/mappings/chat.yaml -> CanonicalChatTurn
 
 `chat.turn.v1` is read from `metadata.amul.schema_version`, before any date
 lookup. A compatible rename is a mapping-file change; historical, unstamped
-traces still use the documented era adapters.
+traces still use the documented era adapters for resolution and structural
+recovery. Their ordinary field paths are also read from
+`telemetry/mappings/chat.yaml`, keyed by source-schema version.
 
 The adapter's output is `chat.canonical.v1`, not the incoming `chat.turn.v1`
 stamp. Imported chat identifiers are SHA-256 of `amul-oan-api:<user_id>`;

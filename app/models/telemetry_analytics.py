@@ -99,9 +99,12 @@ class CanonicalChatTurn(BaseModel):
         )
         _move_availability(availability, "answer", "answer_sanitized", values["answer_sanitized"])
         raw_outcome_availability = availability.pop("turn_outcome", None)
-        availability["outcome"] = (
-            raw_outcome_availability if values["outcome"] is not None and raw_outcome_availability else "unavailable"
-        )
+        if raw_outcome_availability is not None:
+            availability["outcome"] = (
+                raw_outcome_availability if values["outcome"] is not None else "unavailable"
+            )
+        elif "outcome" not in availability:
+            availability["outcome"] = "unavailable"
         availability["outcome_class"] = "derived"
         values["field_availability"] = availability
         return values

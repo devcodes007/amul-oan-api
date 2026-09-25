@@ -31,7 +31,7 @@ from app.services.telemetry_mappings import (
     default_mappings_path,
     load_mappings,
     mapping_or_none,
-    value_at,
+    mapped_values,
 )
 
 
@@ -343,13 +343,7 @@ def _adapt_mapped_voice_turn(
     observations: Sequence[Mapping[str, Any]],
     scores: Sequence[LangfuseScoreSchema],
 ) -> CanonicalVoiceTurn:
-    values = {
-        field: next(
-            (value for path in mapping.fields.get(field, ()) if (value := parse(value_at(raw, path))) is not None),
-            None,
-        )
-        for field, parse in _MAPPED_FIELDS.items()
-    }
+    values = mapped_values(mapping, raw, _MAPPED_FIELDS)
     outcome_class = outcome_vocabulary.classify(values["outcome"])
     availability = {field: _availability(value) for field, value in values.items()}
     availability["channel"] = "derived"

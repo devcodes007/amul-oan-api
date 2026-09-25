@@ -8,7 +8,7 @@ rather than a code change.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Collection, Mapping
+from typing import Any, Callable, Collection, Mapping
 
 from app.services.telemetry_era_registry import TelemetryEraRegistryError, load_yaml_file
 
@@ -43,6 +43,27 @@ def value_at(trace: Mapping[str, Any], path: str) -> Any:
     """
     head, _, rest = path.partition(".")
     return _lookup(trace.get(head), rest) if rest else trace.get(head)
+
+
+def mapped_values(
+    mapping: ContractMapping,
+    trace: Mapping[str, Any],
+    parsers: Mapping[str, Callable[[Any], Any]],
+) -> dict[str, Any]:
+    """Extract a contract's canonical fields using ordered paths.
+
+    Both historical-era adapters and stamped-contract adapters use this helper.
+    Structural reconstruction remains in the channel adapter; ordinary field
+    location and alias changes stay in the mapping file.
+    """
+
+    return {
+        field: next(
+            (value for path in mapping.fields.get(field, ()) if (value := parse(value_at(trace, path))) is not None),
+            None,
+        )
+        for field, parse in parsers.items()
+    }
 
 
 def mapping_or_none(value: Any) -> Mapping[str, Any] | None:
