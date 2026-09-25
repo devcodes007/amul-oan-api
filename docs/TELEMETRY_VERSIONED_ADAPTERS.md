@@ -104,9 +104,9 @@ Before counting voice turns:
 `service` and `release` (voice-oan-api#308). A stamped trace is routed by the
 stamp, not the date:
 
-- Its era is the `voice_eras` entry with a matching `schema_version`. Until
-  eras.yaml has one, stamped traces are rejected. When the stamp goes live, add
-  that era with its prod-observed `valid_from` and `schema_version: voice.turn.v1`.
+- Its `source_era` is the stamp, so it doesn't need an eras.yaml entry to be
+  read. When the stamp goes live, still add an era with its prod-observed
+  `valid_from` and `schema_version: voice.turn.v1`, as the record of when it started.
 - Where each field lives is read from `telemetry/mappings/voice.yaml`, so a new
   version with a renamed field is a mapping change, not a code change. A field
   name there that isn't a CanonicalVoiceTurn field is rejected.

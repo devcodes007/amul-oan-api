@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 
 class TelemetryEraRegistryError(ValueError):
@@ -18,8 +18,6 @@ class EraBoundary:
     valid_to: datetime | None
     valid_from_confidence: str | None
     root_trace_names: frozenset[str]
-    # The amul.schema_version stamp this era's traces carry, if any.
-    schema_version: str | None = None
 
 
 class TelemetryEraRegistry:
@@ -57,11 +55,7 @@ class TelemetryEraRegistry:
                 root_trace_names=frozenset(
                     value for value in raw_era.get("root_trace_names", []) if isinstance(value, str)
                 ),
-                schema_version=(
-                    raw_era.get("schema_version") if isinstance(raw_era.get("schema_version"), str) else None
-                ),
             )
-        _require_unique_schema_versions(eras.values())
         return cls(eras)
 
     def require(self, era_id: str) -> EraBoundary:
@@ -69,9 +63,6 @@ class TelemetryEraRegistry:
             return self._eras[era_id]
         except KeyError as exc:
             raise TelemetryEraRegistryError(f"telemetry/eras.yaml is missing {era_id}") from exc
-
-    def for_schema_version(self, schema_version: str) -> EraBoundary | None:
-        return next((era for era in self._eras.values() if era.schema_version == schema_version), None)
 
 
 def default_era_registry_path() -> Path:
@@ -114,6 +105,7 @@ def check_registry(payload: Any) -> list[str]:
         return ["eras.yaml must be a mapping"]
     problems: list[str] = []
     seen_ids: set[str] = set()
+    schema_versions: dict[str, str] = {}
     for section, prefix in _SECTION_PREFIXES.items():
         eras = payload.get(section)
         if not isinstance(eras, list):
@@ -129,6 +121,16 @@ def check_registry(payload: Any) -> list[str]:
             if era_id in seen_ids:
                 problems.append(f"{era_id} is listed twice")
             seen_ids.add(era_id)
+            schema_version = era.get("schema_version")
+            if schema_version is not None:
+                if not isinstance(schema_version, str) or not schema_version:
+                    problems.append(f"{era_id}.schema_version must be a stamp like voice.turn.v1")
+                elif schema_version in schema_versions:
+                    problems.append(
+                        f"{schema_versions[schema_version]} and {era_id} both declare schema_version {schema_version}"
+                    )
+                else:
+                    schema_versions[schema_version] = era_id
             try:
                 valid_from = _as_utc_datetime(era.get("valid_from"), era_id, "valid_from")
                 valid_to = (
@@ -157,18 +159,6 @@ def check_registry(payload: Any) -> list[str]:
                     f"{era_id} ends at {valid_to.isoformat()} but no {section} root era starts then"
                 )
     return problems
-
-
-def _require_unique_schema_versions(eras: Iterable[EraBoundary]) -> None:
-    seen: dict[str, str] = {}
-    for era in eras:
-        if era.schema_version is None:
-            continue
-        if era.schema_version in seen:
-            raise TelemetryEraRegistryError(
-                f"{seen[era.schema_version]} and {era.era_id} both declare schema_version {era.schema_version}"
-            )
-        seen[era.schema_version] = era.era_id
 
 
 def _as_utc_datetime(value: Any, era_id: str, field_name: str) -> datetime:
