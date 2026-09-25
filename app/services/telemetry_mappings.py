@@ -5,6 +5,7 @@ canonical field lives in the raw trace, so a renamed field is a mapping change
 rather than a code change.
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Mapping
@@ -36,12 +37,35 @@ def load_mappings(path: Path, *, allowed_fields: Collection[str]) -> dict[str, C
 
 
 def value_at(trace: Mapping[str, Any], path: str) -> Any:
-    """Read `field` or `field.key` from a trace; the key may itself contain dots."""
-    head, _, key = path.partition(".")
-    value = trace.get(head)
-    if not key:
+    """Read `field`, `field.key` or `field.key.nested` from a trace.
+
+    A key that itself has dots (amul.schema_version) wins over a nested read.
+    """
+    head, _, rest = path.partition(".")
+    return _lookup(trace.get(head), rest) if rest else trace.get(head)
+
+
+def mapping_or_none(value: Any) -> Mapping[str, Any] | None:
+    """Accept an object (Langfuse API) or a JSON-encoded object (ClickHouse export)."""
+    if isinstance(value, Mapping):
         return value
-    return value.get(key) if isinstance(value, Mapping) else None
+    if isinstance(value, str) and value.lstrip().startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, Mapping) else None
+    return None
+
+
+def _lookup(value: Any, path: str) -> Any:
+    mapping = mapping_or_none(value)
+    if mapping is None:
+        return None
+    if path in mapping:
+        return mapping[path]
+    head, _, rest = path.partition(".")
+    return _lookup(mapping.get(head), rest) if rest else None
 
 
 def _resolve(

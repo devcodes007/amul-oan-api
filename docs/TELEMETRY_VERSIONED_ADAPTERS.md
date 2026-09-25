@@ -79,7 +79,7 @@ as extensions when both the date and the key match.
 | `voice.v0` | `Voice Agent run` / `Voice Agent Signed In run` | supported | Question, answer and outcome are unavailable; the root output is the full message history and is never read. `signed_in` is only set from the signed-in agent name. |
 | `voice.v1` | v0 root | never labelled | No observable change. |
 | `voice.v2` | v0 root | extension | An external-API span from `deeea7a` (`marqo_search`, `fetch_farmer_amulpashudhan`, ...). |
-| `voice.v3` | `voice_request` | supported | Sanitized question and answer, outcome, latency, `user_id_hash`. |
+| `voice.v3` | `voice_request` | supported | Sanitized question and answer, outcome, latency, `user_id_hash`, and `signed_in` from `metadata.agent` on turns that reached the agent. |
 | `voice.v3b` | v3/v4 root | extension | `metadata.pipeline_variant`, mapped to `pipeline_profile` as derived. |
 | `voice.v4` | `agent_journey` | supported | The v3 shape under a new name. |
 | `voice.v5` | v4 root | extension | `metadata.pipeline_profile` or `pc_<step>` keys. |

@@ -67,3 +67,19 @@ def test_value_at_reads_trace_fields_and_metadata_keys_with_dots():
     assert value_at(trace, "metadata.amul.schema_version") == "voice.turn.v1"
     assert value_at(trace, "metadata.missing") is None
     assert value_at(trace, "sessionId.anything") is None
+
+
+def test_value_at_reads_nested_keys_from_objects_and_json_strings():
+    api = {"metadata": {"agent": {"signed_in": True}}}
+    export = {"metadata": {"agent": '{"signed_in": false}'}}
+
+    assert value_at(api, "metadata.agent.signed_in") is True
+    assert value_at(export, "metadata.agent.signed_in") is False
+    assert value_at(api, "metadata.agent.missing") is None
+    assert value_at({"metadata": {"agent": "not an object"}}, "metadata.agent.signed_in") is None
+
+
+def test_a_key_with_dots_wins_over_a_nested_read():
+    trace = {"metadata": {"amul.schema_version": "flat", "amul": {"schema_version": "nested"}}}
+
+    assert value_at(trace, "metadata.amul.schema_version") == "flat"
