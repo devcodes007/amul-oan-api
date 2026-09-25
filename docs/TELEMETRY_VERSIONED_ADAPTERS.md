@@ -70,6 +70,9 @@ bundle as chat. Era dates come from `voice_eras` in `telemetry/eras.yaml` and
 outcome buckets from `voice_outcome_vocabulary`. Nested metadata can be objects
 (Langfuse API) or JSON strings (ClickHouse export).
 
+A turn's `schema_version` (`voice.canonical.v1`) is the version of the output
+shape. It is not the stamp the trace came in with; that is `source_schema_version`.
+
 Only the two root renames pick an adapter, and dispatch is refused if either
 boundary drops below high confidence. Later eras only add keys, so they show up
 as extensions when both the date and the key match.
