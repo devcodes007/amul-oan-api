@@ -81,16 +81,21 @@ def default_era_registry_path() -> Path:
 def load_registry_file(path: Path) -> Any:
     """Parsed eras.yaml, read-only. Adapters load it per trace, so each file version is parsed once."""
     try:
-        stat = path.stat()
+        return load_yaml_file(path)
     except FileNotFoundError as exc:
         raise TelemetryEraRegistryError(
             f"Telemetry era registry not found at {path}. This adapter depends on PR #297."
         ) from exc
-    return _parse_registry_file(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+def load_yaml_file(path: Path) -> Any:
+    """Parsed YAML, read-only and cached until the file changes."""
+    stat = path.stat()
+    return _parse_yaml_file(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
 
 
 @lru_cache(maxsize=8)
-def _parse_registry_file(path: str, mtime_ns: int, size: int) -> Any:
+def _parse_yaml_file(path: str, mtime_ns: int, size: int) -> Any:
     try:
         import yaml
     except ImportError as exc:  # pragma: no cover - project already uses PyYAML

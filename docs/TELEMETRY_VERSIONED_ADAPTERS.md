@@ -107,6 +107,9 @@ stamp, not the date:
 - Its era is the `voice_eras` entry with a matching `schema_version`. Until
   eras.yaml has one, stamped traces are rejected. When the stamp goes live, add
   that era with its prod-observed `valid_from` and `schema_version: voice.turn.v1`.
+- Where each field lives is read from `telemetry/mappings/voice.yaml`, so a new
+  version with a renamed field is a mapping change, not a code change. A field
+  name there that isn't a CanonicalVoiceTurn field is rejected.
 - An unknown stamp, or a known stamp on the wrong root, is rejected.
 - Stamped turns have no extensions; the stamp already names the contract.
 - Unstamped `agent_journey` traces are read as v4 until `voice.v4` gets a
