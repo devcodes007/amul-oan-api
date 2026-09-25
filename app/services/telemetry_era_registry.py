@@ -99,6 +99,61 @@ def _parse_registry_file(path: str, mtime_ns: int, size: int) -> Any:
         return yaml.safe_load(registry_file)
 
 
+_SECTION_PREFIXES = {"chat_eras": "chat.", "voice_eras": "voice."}
+_CONFIDENCE_LEVELS = {"low", "medium", "high"}
+
+
+def check_registry(payload: Any) -> list[str]:
+    """Problems in a parsed eras.yaml, one readable line each. Empty means it's usable."""
+    if not isinstance(payload, Mapping):
+        return ["eras.yaml must be a mapping"]
+    problems: list[str] = []
+    seen_ids: set[str] = set()
+    for section, prefix in _SECTION_PREFIXES.items():
+        eras = payload.get(section)
+        if not isinstance(eras, list):
+            problems.append(f"{section} is missing or not a list")
+            continue
+        root_starts: set[datetime] = set()
+        root_ends: list[tuple[str, datetime]] = []
+        for index, era in enumerate(eras):
+            era_id = era.get("era_id") if isinstance(era, Mapping) else None
+            if not isinstance(era_id, str) or not era_id.startswith(prefix):
+                problems.append(f"{section}[{index}] needs an era_id starting with {prefix!r}")
+                continue
+            if era_id in seen_ids:
+                problems.append(f"{era_id} is listed twice")
+            seen_ids.add(era_id)
+            try:
+                valid_from = _as_utc_datetime(era.get("valid_from"), era_id, "valid_from")
+                valid_to = (
+                    _as_utc_datetime(era["valid_to"], era_id, "valid_to") if era.get("valid_to") is not None else None
+                )
+            except ValueError as exc:
+                problems.append(f"{era_id}: {exc}")
+                continue
+            if valid_to is not None and valid_to <= valid_from:
+                problems.append(f"{era_id} ends before it starts")
+            confidence = era.get("valid_from_confidence")
+            if confidence is not None and confidence not in _CONFIDENCE_LEVELS:
+                problems.append(f"{era_id}.valid_from_confidence must be low, medium or high")
+            names = era.get("root_trace_names", [])
+            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+                problems.append(f"{era_id}.root_trace_names must be a list of trace names")
+            elif names:
+                root_starts.add(valid_from)
+                if valid_to is not None:
+                    root_ends.append((era_id, valid_to))
+        # A root era that ends must hand over to another one at the same instant,
+        # otherwise traces in between match no adapter.
+        for era_id, valid_to in root_ends:
+            if valid_to not in root_starts:
+                problems.append(
+                    f"{era_id} ends at {valid_to.isoformat()} but no {section} root era starts then"
+                )
+    return problems
+
+
 def _require_unique_schema_versions(eras: Iterable[EraBoundary]) -> None:
     seen: dict[str, str] = {}
     for era in eras:
