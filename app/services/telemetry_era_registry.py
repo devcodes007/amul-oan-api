@@ -64,6 +64,9 @@ class TelemetryEraRegistry:
         except KeyError as exc:
             raise TelemetryEraRegistryError(f"telemetry/eras.yaml is missing {era_id}") from exc
 
+    def root_trace_names(self) -> frozenset[str]:
+        return frozenset(name for era in self._eras.values() for name in era.root_trace_names)
+
 
 def default_era_registry_path() -> Path:
     return Path(__file__).resolve().parents[2] / "telemetry" / "eras.yaml"
