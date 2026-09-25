@@ -61,6 +61,10 @@ Every step, with the file to edit: `TELEMETRY_CHANGES.md`.
 - The chat importer never retains raw phone numbers, questions, answers, or
   root input/output. It stores a namespaced SHA-256 for user identity and
   `{chars, sha256}` for question and answer text.
+- Every canonical turn preserves the raw source `outcome` and adds the shared
+  dashboard `outcome_class`: `delivered`, `non_question`,
+  `refused_or_blocked`, `failed`, or `unclassified`. Missing or unmapped values
+  are `unclassified`, never `unknown`.
 
 ## Reading telemetry
 

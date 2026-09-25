@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from app.models.telemetry_analytics import ChatC3TraceSchema
+from app.models.telemetry_analytics import CanonicalChatTurn, ChatC3TraceSchema
 from app.services.telemetry_era_adapters import (
     ChatC3Adapter,
     UnsupportedTelemetryEra,
@@ -125,7 +125,10 @@ def test_chat_c3_adapter_normalizes_variant_without_inventing_missing_fields():
     assert turn.score_names == []
     assert turn.observation_names == []
     assert turn.field_availability["question_sanitized"] == "unavailable"
-    assert turn.field_availability["turn_outcome"] == "unavailable"
+    assert turn.outcome is None
+    assert turn.outcome_class == "unclassified"
+    assert turn.field_availability["outcome"] == "unavailable"
+    assert turn.field_availability["outcome_class"] == "derived"
     assert turn.field_availability["tool_calls"] == "unavailable"
 
 
@@ -415,8 +418,33 @@ def test_resolver_adapts_c6_root_input_and_categorical_scores(era_registry):
     assert turn.pipeline_profile == "oss"
     assert turn.persona == "farmer"
     assert turn.turn_outcome == "success"
+    assert turn.outcome == "success"
+    assert turn.outcome_class == "delivered"
     assert turn.served_tier == "agent=vllm:gemma"
-    assert turn.field_availability["turn_outcome"] == "recorded"
+    assert turn.field_availability["outcome"] == "recorded"
+
+
+@pytest.mark.parametrize(
+    ("raw_outcome", "outcome_class"),
+    [
+        ("success", "delivered"),
+        ("error", "failed"),
+        ("cancelled", "failed"),
+        ("future_value", "unclassified"),
+        (None, "unclassified"),
+    ],
+)
+def test_chat_outcomes_use_the_shared_dashboard_taxonomy(raw_outcome, outcome_class):
+    turn = CanonicalChatTurn(
+        source_era="test",
+        source_schema_version="test.v1",
+        source_trace_name="chat.translation",
+        timestamp="2026-10-05T10:00:00Z",
+        turn_outcome=raw_outcome,
+    )
+
+    assert turn.outcome == raw_outcome
+    assert turn.outcome_class == outcome_class
 
 
 def test_resolver_refuses_low_confidence_c8_boundary(era_registry):

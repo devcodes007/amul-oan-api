@@ -10,6 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 FieldAvailability = Literal["recorded", "derived", "unavailable"]
 
 
+_CHAT_OUTCOME_CLASSES = {
+    "success": "delivered",
+    "error": "failed",
+    "cancelled": "failed",
+}
+UNCLASSIFIED_OUTCOME = "unclassified"
+
+
 class SanitizedChatText(BaseModel):
     """Privacy-safe chat text retained by the importer."""
 
@@ -45,7 +53,10 @@ class CanonicalChatTurn(BaseModel):
     question_sanitized: SanitizedChatText | None = None
     answer_sanitized: SanitizedChatText | None = None
     persona: str | None = None
-    turn_outcome: str | None = None
+    outcome: str | None = None
+    outcome_class: Literal[
+        "delivered", "non_question", "refused_or_blocked", "failed", "unclassified"
+    ] = UNCLASSIFIED_OUTCOME
     served_tier: str | None = None
     full_turn_latency_ms: float | None = None
     tool_calls: list[dict[str, Any]] | None = None
@@ -64,6 +75,7 @@ class CanonicalChatTurn(BaseModel):
         user_id = values.pop("user_id", None)
         question = values.pop("original_question", None)
         answer = values.pop("answer", None)
+        turn_outcome = values.pop("turn_outcome", None)
         values.pop("root_input", None)
         values.pop("root_output", None)
 
@@ -73,6 +85,10 @@ class CanonicalChatTurn(BaseModel):
             values["question_sanitized"] = _sanitize_text(question)
         if values.get("answer_sanitized") is None:
             values["answer_sanitized"] = _sanitize_text(answer)
+        if values.get("outcome") is None:
+            values["outcome"] = turn_outcome if isinstance(turn_outcome, str) else None
+        if values.get("outcome_class") is None:
+            values["outcome_class"] = _CHAT_OUTCOME_CLASSES.get(values["outcome"], UNCLASSIFIED_OUTCOME)
 
         availability = dict(values.get("field_availability") or {})
         availability.pop("root_input", None)
@@ -82,8 +98,19 @@ class CanonicalChatTurn(BaseModel):
             availability, "original_question", "question_sanitized", values["question_sanitized"]
         )
         _move_availability(availability, "answer", "answer_sanitized", values["answer_sanitized"])
+        raw_outcome_availability = availability.pop("turn_outcome", None)
+        availability["outcome"] = (
+            raw_outcome_availability if values["outcome"] is not None and raw_outcome_availability else "unavailable"
+        )
+        availability["outcome_class"] = "derived"
         values["field_availability"] = availability
         return values
+
+    @property
+    def turn_outcome(self) -> str | None:
+        """Backward-compatible read alias; new consumers use ``outcome``."""
+
+        return self.outcome
 
 
 def _hash_identifier(value: Any) -> str | None:
