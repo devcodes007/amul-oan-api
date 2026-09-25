@@ -9,7 +9,7 @@ this data.
 Turn traces carry three metadata keys, set in `app/services/telemetry_stamps.py`
 (same file name in both repos):
 
-- `amul.schema_version`: the format of the trace, e.g. `voice.turn.v1`
+- `amul.schema_version`: the incoming format of the trace, e.g. `chat.turn.v1`
 - `service`: `amul-oan-api` or `voice-oan-api`
 - `release`: the deployed build. Chat takes it from `LANGFUSE_RELEASE`; voice
   uses the git commit of the running code (the checkout's HEAD, or `GIT_SHA`
@@ -17,6 +17,10 @@ Turn traces carry three metadata keys, set in `app/services/telemetry_stamps.py`
 
 Adapters pick the format from `amul.schema_version`. Only traces from before
 the stamp existed are matched by root name and date.
+
+The normalized output contract has its own version: `chat.turn.v1` becomes
+`chat.canonical.v1`, just as `voice.turn.v1` becomes `voice.canonical.v1`.
+Never treat a source stamp as the canonical-output version.
 
 ## When you change what a trace sends
 
@@ -54,6 +58,9 @@ Every step, with the file to edit: `TELEMETRY_CHANGES.md`.
   `derived` (computed, or taken from an older name or another trace) or
   `unavailable`. Never fill in a value the trace didn't have.
 - Test fixtures are redacted: no phone numbers or farmer text. This repo is public.
+- The chat importer never retains raw phone numbers, questions, answers, or
+  root input/output. It stores a namespaced SHA-256 for user identity and
+  `{chars, sha256}` for question and answer text.
 
 ## Reading telemetry
 

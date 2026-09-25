@@ -1,12 +1,20 @@
 """Stable, provider-neutral contracts for historical telemetry analytics."""
 
 from datetime import datetime
+import hashlib
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 FieldAvailability = Literal["recorded", "derived", "unavailable"]
+
+
+class SanitizedChatText(BaseModel):
+    """Privacy-safe chat text retained by the importer."""
+
+    chars: int
+    sha256: str
 
 
 class CanonicalChatTurn(BaseModel):
@@ -17,7 +25,9 @@ class CanonicalChatTurn(BaseModel):
     absence, a recorded value, or a value derived from a historical alias.
     """
 
-    schema_version: Literal["chat.turn.v1"] = "chat.turn.v1"
+    # This is the normalized output contract. ``source_schema_version`` is the
+    # incoming trace stamp, such as ``chat.turn.v1``.
+    schema_version: Literal["chat.canonical.v1"] = "chat.canonical.v1"
     source_era: str
     source_schema_version: str
     source_era_extensions: list[str] = Field(default_factory=list)
@@ -25,25 +35,77 @@ class CanonicalChatTurn(BaseModel):
     source_trace_name: str
     timestamp: datetime
     session_id: str | None = None
-    user_id: str | int | None = None
+    user_id_hash: str | None = None
     user_id_semantics: str | None = None
     channel: str | None = None
     pipeline: str | None = None
     pipeline_profile: str | None = None
     source_lang: str | None = None
     target_lang: str | None = None
-    original_question: str | None = None
-    answer: Any | None = None
+    question_sanitized: SanitizedChatText | None = None
+    answer_sanitized: SanitizedChatText | None = None
     persona: str | None = None
     turn_outcome: str | None = None
     served_tier: str | None = None
     full_turn_latency_ms: float | None = None
     tool_calls: list[dict[str, Any]] | None = None
-    root_input: dict[str, Any] | None = None
-    root_output: Any | None = None
     observation_names: list[str] = Field(default_factory=list)
     score_names: list[str] = Field(default_factory=list)
     field_availability: dict[str, FieldAvailability] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sanitize_import_values(cls, raw: Any) -> Any:
+        """Accept legacy adapter inputs but never retain raw chat PII/text."""
+
+        if not isinstance(raw, dict):
+            return raw
+        values = dict(raw)
+        user_id = values.pop("user_id", None)
+        question = values.pop("original_question", None)
+        answer = values.pop("answer", None)
+        values.pop("root_input", None)
+        values.pop("root_output", None)
+
+        if values.get("user_id_hash") is None:
+            values["user_id_hash"] = _hash_identifier(user_id)
+        if values.get("question_sanitized") is None:
+            values["question_sanitized"] = _sanitize_text(question)
+        if values.get("answer_sanitized") is None:
+            values["answer_sanitized"] = _sanitize_text(answer)
+
+        availability = dict(values.get("field_availability") or {})
+        availability.pop("root_input", None)
+        availability.pop("root_output", None)
+        _move_availability(availability, "user_id", "user_id_hash", values["user_id_hash"])
+        _move_availability(
+            availability, "original_question", "question_sanitized", values["question_sanitized"]
+        )
+        _move_availability(availability, "answer", "answer_sanitized", values["answer_sanitized"])
+        values["field_availability"] = availability
+        return values
+
+
+def _hash_identifier(value: Any) -> str | None:
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return None
+    identifier = str(value)
+    if not identifier:
+        return None
+    return hashlib.sha256(f"amul-oan-api:{identifier}".encode()).hexdigest()
+
+
+def _sanitize_text(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, str):
+        return None
+    return {"chars": len(value), "sha256": hashlib.sha256(value.encode()).hexdigest()}
+
+
+def _move_availability(
+    availability: dict[str, FieldAvailability], source: str, target: str, value: Any
+) -> None:
+    availability.pop(source, None)
+    availability[target] = "derived" if value is not None else "unavailable"
 
 
 class LangfuseScoreSchema(BaseModel):

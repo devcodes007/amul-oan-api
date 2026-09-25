@@ -17,6 +17,11 @@ raw stamped chat trace -> telemetry/mappings/chat.yaml -> CanonicalChatTurn
 lookup. A compatible rename is a mapping-file change; historical, unstamped
 traces still use the documented era adapters.
 
+The adapter's output is `chat.canonical.v1`, not the incoming `chat.turn.v1`
+stamp. Imported chat identifiers are SHA-256 of `amul-oan-api:<user_id>`;
+question and answer values are retained only as `{chars, sha256}`. Raw chat
+text, phone numbers, and root input/output do not cross the canonical boundary.
+
 `telemetry/eras.yaml` is the source of truth for production-observed era dates
 and root trace names. The resolver uses both values: a root name can mean a
 different structure in different eras.

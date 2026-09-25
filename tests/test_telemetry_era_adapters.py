@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 
 from app.models.telemetry_analytics import ChatC3TraceSchema
@@ -9,6 +11,14 @@ from app.services.telemetry_era_adapters import (
 )
 from app.services.telemetry_mappings import default_mappings_path
 from app.services.telemetry_era_registry import TelemetryEraRegistry
+
+
+def _text(value: str) -> dict[str, object]:
+    return {"chars": len(value), "sha256": hashlib.sha256(value.encode()).hexdigest()}
+
+
+def _user_hash(value: str | int) -> str:
+    return hashlib.sha256(f"amul-oan-api:{value}".encode()).hexdigest()
 
 
 @pytest.fixture
@@ -103,18 +113,18 @@ def test_chat_c3_adapter_normalizes_variant_without_inventing_missing_fields():
         scores=[],
     )
 
-    assert turn.schema_version == "chat.turn.v1"
+    assert turn.schema_version == "chat.canonical.v1"
     assert turn.source_era == "chat.c3"
     assert turn.source_schema_version == "chat.c3.v1"
     assert turn.source_era_extensions == ["chat.c3b"]
     assert turn.pipeline == "translation"
     assert turn.pipeline_profile == "legacy"
-    assert turn.answer == "<redacted answer>"
-    assert turn.original_question is None
-    assert turn.root_input == {"action": "Proceed with the query.", "model_name": "gpt-5.1"}
+    assert turn.answer_sanitized.model_dump() == _text("<redacted answer>")
+    assert turn.question_sanitized is None
+    assert "root_input" not in turn.model_dump()
     assert turn.score_names == []
     assert turn.observation_names == []
-    assert turn.field_availability["original_question"] == "unavailable"
+    assert turn.field_availability["question_sanitized"] == "unavailable"
     assert turn.field_availability["turn_outcome"] == "unavailable"
     assert turn.field_availability["tool_calls"] == "unavailable"
 
@@ -158,11 +168,11 @@ def test_resolver_adapts_c2_agent_observation_without_guessing_pretranslation_li
     assert turn.source_era == "chat.c2"
     assert turn.source_era_extensions == ["chat.c2b", "chat.c2c"]
     assert turn.user_id_semantics == "jwt_phone_then_query_param_then_anonymous"
-    assert turn.user_id == "1234567890"
-    assert turn.answer == "<redacted target-language answer>"
-    assert turn.original_question is None
-    assert turn.field_availability["answer"] == "recorded"
-    assert turn.field_availability["original_question"] == "unavailable"
+    assert turn.user_id_hash == _user_hash(1234567890)
+    assert turn.answer_sanitized.model_dump() == _text("<redacted target-language answer>")
+    assert turn.question_sanitized is None
+    assert turn.field_availability["answer_sanitized"] == "derived"
+    assert turn.field_availability["question_sanitized"] == "unavailable"
 
 
 def test_resolver_rejects_c2_name_reuse_without_agent_observation(era_registry):
@@ -206,8 +216,8 @@ def test_c2_enriches_original_question_only_from_explicit_same_session_pretransl
         era_registry=era_registry,
     )
 
-    assert turn.original_question == "<redacted original question>"
-    assert turn.field_availability["original_question"] == "derived"
+    assert turn.question_sanitized.model_dump() == _text("<redacted original question>")
+    assert turn.field_availability["question_sanitized"] == "derived"
 
 
 def test_c2_matches_each_turn_to_its_uniquely_nearest_pretranslation(era_registry):
@@ -247,8 +257,8 @@ def test_c2_matches_each_turn_to_its_uniquely_nearest_pretranslation(era_registr
         era_registry=era_registry,
     )
 
-    assert first_turn.original_question == "<redacted first question>"
-    assert second_turn.original_question == "<redacted second question>"
+    assert first_turn.question_sanitized.model_dump() == _text("<redacted first question>")
+    assert second_turn.question_sanitized.model_dump() == _text("<redacted second question>")
 
 
 def test_c2_returns_no_question_for_ambiguous_or_stale_pretranslation(era_registry):
@@ -287,8 +297,8 @@ def test_c2_returns_no_question_for_ambiguous_or_stale_pretranslation(era_regist
         era_registry=era_registry,
     )
 
-    assert turn.original_question is None
-    assert turn.field_availability["original_question"] == "unavailable"
+    assert turn.question_sanitized is None
+    assert turn.field_availability["question_sanitized"] == "unavailable"
 
 
 def test_resolver_adapts_c4_tool_observations(era_registry):
@@ -400,8 +410,8 @@ def test_resolver_adapts_c6_root_input_and_categorical_scores(era_registry):
     assert turn.source_era == "chat.c6"
     assert turn.source_schema_version == "chat.c6.v1"
     assert turn.source_era_extensions == ["chat.c6b", "chat.c6c", "chat.c7"]
-    assert turn.original_question == "<redacted query>"
-    assert turn.answer == "<redacted answer>"
+    assert turn.question_sanitized.model_dump() == _text("<redacted query>")
+    assert turn.answer_sanitized.model_dump() == _text("<redacted answer>")
     assert turn.pipeline_profile == "oss"
     assert turn.persona == "farmer"
     assert turn.turn_outcome == "success"
@@ -466,11 +476,16 @@ def test_stamped_chat_trace_uses_the_shared_mapping_engine_without_an_era_regist
 
     assert turn.source_era == "chat.turn.v1"
     assert turn.source_schema_version == "chat.turn.v1"
-    assert turn.original_question == "<redacted question>"
-    assert turn.answer == "<redacted answer>"
+    assert turn.question_sanitized.model_dump() == _text("<redacted question>")
+    assert turn.answer_sanitized.model_dump() == _text("<redacted answer>")
     assert turn.pipeline_profile == "oss"
     assert turn.turn_outcome == "success"
     assert turn.field_availability["pipeline_profile"] == "recorded"
+
+    imported = turn.model_dump_json()
+    assert "redacted-user" not in imported
+    assert "redacted question" not in imported
+    assert "redacted answer" not in imported
 
 
 def test_unknown_stamped_chat_schema_is_rejected():
