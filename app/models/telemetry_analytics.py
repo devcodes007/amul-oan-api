@@ -120,7 +120,7 @@ def _hash_identifier(value: Any) -> str | None:
     if not isinstance(value, (str, int)) or isinstance(value, bool):
         return None
     identifier = str(value)
-    if not identifier:
+    if not identifier or identifier.strip().lower() == "anonymous":
         return None
     return hashlib.sha256(f"amul-oan-api:{identifier}".encode()).hexdigest()
 

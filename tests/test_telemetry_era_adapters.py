@@ -561,3 +561,17 @@ def test_stamped_chat_field_rename_needs_only_a_mapping_change(tmp_path):
 
     assert turn.source_schema_version == "chat.turn.v2"
     assert turn.pipeline_profile == "oss"
+
+
+@pytest.mark.parametrize("anonymous_value", ["anonymous", "Anonymous", " anonymous "])
+def test_anonymous_chat_user_id_is_not_hashed(anonymous_value):
+    turn = CanonicalChatTurn(
+        source_era="test",
+        source_schema_version="test.v1",
+        source_trace_name="chat.translation",
+        timestamp="2026-10-05T10:00:00Z",
+        user_id=anonymous_value,
+    )
+
+    assert turn.user_id_hash is None
+    assert turn.field_availability["user_id_hash"] == "unavailable"
