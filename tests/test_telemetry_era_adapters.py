@@ -2,15 +2,36 @@ import hashlib
 
 import pytest
 
-from app.models.telemetry_analytics import CanonicalChatTurn, ChatC3TraceSchema
+from app.models.telemetry_analytics import (
+    CanonicalChatTurn,
+    ChatC3TraceSchema,
+    ChatC5TraceSchema,
+    ChatC6TraceSchema,
+    ChatC8TraceSchema,
+)
 from app.services.telemetry_era_adapters import (
     ChatC3Adapter,
+    ChatC5Adapter,
+    ChatC6Adapter,
+    ChatC8Adapter,
     UnsupportedTelemetryEra,
-    adapt_chat_trace,
+    adapt_chat_trace as _adapt_chat_trace,
     load_chat_mappings,
 )
 from app.services.telemetry_mappings import default_mappings_path
 from app.services.telemetry_era_registry import OutcomeVocabulary, TelemetryEraRegistry
+
+
+_CHAT_OUTCOME_VOCABULARY = OutcomeVocabulary.from_mapping(
+    {"delivered": ["success"], "failed": ["error", "cancelled"]}
+)
+
+
+def adapt_chat_trace(*args, **kwargs):
+    """Keep unit fixtures independent of the registry PR stacked below this branch."""
+
+    kwargs.setdefault("outcome_vocabulary", _CHAT_OUTCOME_VOCABULARY)
+    return _adapt_chat_trace(*args, **kwargs)
 
 
 def _text(value: str) -> dict[str, object]:
@@ -371,6 +392,46 @@ def test_canonical_tool_calls_strip_arguments_and_results():
     assert [call.model_dump() for call in turn.tool_calls] == [
         {"tool_name": "fetch_farmer", "call_id": "stable-call-id"}
     ]
+    assert "must not persist" not in turn.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("adapter", "schema", "name", "timestamp", "root_input"),
+    [
+        (ChatC5Adapter, ChatC5TraceSchema, "Amul AI Agent", "2026-07-25T10:00:00Z", {"action": "redacted"}),
+        (ChatC6Adapter, ChatC6TraceSchema, "chat.translation", "2026-08-10T10:00:00Z", {"query": "redacted"}),
+        (ChatC8Adapter, ChatC8TraceSchema, "chat.translation", "2026-09-20T10:00:00Z", {"query": "redacted"}),
+    ],
+    ids=["c5", "c6", "c8"],
+)
+def test_later_chat_eras_keep_only_tool_references(adapter, schema, name, timestamp, root_input):
+    turn = adapter.adapt(
+        schema.model_validate(
+            {
+                "id": "redacted-trace",
+                "name": name,
+                "timestamp": timestamp,
+                "sessionId": "redacted-session",
+                "input": root_input,
+                "output": "redacted answer",
+                "metadata": {"pipeline": "translation", "channel": "web"},
+            }
+        ),
+        observations=[
+            {
+                "type": "TOOL",
+                "name": "farmer_lookup",
+                "input": {"farmer": "must not persist"},
+                "output": "must not persist",
+                "metadata": {"attributes": {"gen_ai.tool.call.id": "stable-call-id"}},
+            }
+        ],
+    )
+
+    assert [call.model_dump() for call in turn.tool_calls] == [
+        {"tool_name": "farmer_lookup", "call_id": "stable-call-id"}
+    ]
+    assert turn.field_availability["tool_calls"] == "derived"
     assert "must not persist" not in turn.model_dump_json()
 
 

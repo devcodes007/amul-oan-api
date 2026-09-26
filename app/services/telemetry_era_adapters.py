@@ -207,6 +207,7 @@ class ChatC5Adapter:
         observations: Sequence[Mapping[str, Any]] = (),
         scores: Sequence[LangfuseScoreSchema] = (),
     ) -> CanonicalChatTurn:
+        tool_calls = _tool_calls(observations)
         return CanonicalChatTurn(
             source_era=cls.era_id,
             source_schema_version="chat.c5.v1",
@@ -223,6 +224,7 @@ class ChatC5Adapter:
             target_lang=trace.metadata.target_lang,
             original_question=None,
             answer=trace.output,
+            tool_calls=tool_calls,
             root_input=trace.input,
             root_output=trace.output,
             observation_names=_names(observations),
@@ -243,7 +245,7 @@ class ChatC5Adapter:
                 "turn_outcome": "unavailable",
                 "served_tier": "unavailable",
                 "full_turn_latency_ms": "unavailable",
-                "tool_calls": "unavailable",
+                "tool_calls": "derived" if tool_calls else "unavailable",
                 "scores": "unavailable",
             },
         )
@@ -328,6 +330,7 @@ class ChatC6Adapter:
     ) -> CanonicalChatTurn:
         score_values = {score.name: _string_or_none(score.value) for score in scores}
         root_input = trace.input
+        tool_calls = _tool_calls(observations)
 
         return CanonicalChatTurn(
             source_era=cls.era_id,
@@ -349,6 +352,7 @@ class ChatC6Adapter:
             persona=_string_or_none((root_input or {}).get("persona")) or trace.metadata.persona,
             turn_outcome=score_values.get("turn_outcome"),
             served_tier=score_values.get("served_tier"),
+            tool_calls=tool_calls,
             root_input=root_input,
             root_output=trace.output,
             observation_names=_names(observations),
@@ -369,7 +373,7 @@ class ChatC6Adapter:
                 "turn_outcome": _availability(score_values.get("turn_outcome")),
                 "served_tier": _availability(score_values.get("served_tier")),
                 "full_turn_latency_ms": "unavailable",
-                "tool_calls": "unavailable",
+                "tool_calls": "derived" if tool_calls else "unavailable",
             },
         )
 
