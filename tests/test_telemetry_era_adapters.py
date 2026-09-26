@@ -126,9 +126,9 @@ def test_chat_c3_adapter_normalizes_variant_without_inventing_missing_fields():
     assert turn.observation_names == []
     assert turn.field_availability["question_sanitized"] == "unavailable"
     assert turn.outcome is None
-    assert turn.outcome_class == "unclassified"
+    assert turn.outcome_class is None
     assert turn.field_availability["outcome"] == "unavailable"
-    assert turn.field_availability["outcome_class"] == "derived"
+    assert turn.field_availability["outcome_class"] == "unavailable"
     assert turn.field_availability["tool_calls"] == "unavailable"
 
 
@@ -457,7 +457,7 @@ def test_resolver_adapts_c6_root_input_and_categorical_scores(era_registry):
         ("error", "failed"),
         ("cancelled", "failed"),
         ("future_value", "unclassified"),
-        (None, "unclassified"),
+        (None, None),
     ],
 )
 def test_chat_outcomes_use_the_shared_dashboard_taxonomy(raw_outcome, outcome_class):

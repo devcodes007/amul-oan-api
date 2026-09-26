@@ -56,7 +56,7 @@ class CanonicalChatTurn(BaseModel):
     outcome: str | None = None
     outcome_class: Literal[
         "delivered", "non_question", "refused_or_blocked", "failed", "unclassified"
-    ] = UNCLASSIFIED_OUTCOME
+    ] | None = None
     served_tier: str | None = None
     full_turn_latency_ms: float | None = None
     tool_calls: list[dict[str, Any]] | None = None
@@ -87,7 +87,7 @@ class CanonicalChatTurn(BaseModel):
             values["answer_sanitized"] = _sanitize_text(answer)
         if values.get("outcome") is None:
             values["outcome"] = turn_outcome if isinstance(turn_outcome, str) else None
-        if values.get("outcome_class") is None:
+        if values.get("outcome_class") is None and values["outcome"] is not None:
             values["outcome_class"] = _CHAT_OUTCOME_CLASSES.get(values["outcome"], UNCLASSIFIED_OUTCOME)
 
         availability = dict(values.get("field_availability") or {})
@@ -105,7 +105,9 @@ class CanonicalChatTurn(BaseModel):
             )
         elif "outcome" not in availability:
             availability["outcome"] = "unavailable"
-        availability["outcome_class"] = "derived"
+        availability["outcome_class"] = (
+            "derived" if values.get("outcome_class") is not None else "unavailable"
+        )
         values["field_availability"] = availability
         return values
 
