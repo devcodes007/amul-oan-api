@@ -140,6 +140,7 @@ def test_chat_c3_adapter_normalizes_variant_without_inventing_missing_fields():
     assert turn.source_era_extensions == ["chat.c3b"]
     assert turn.pipeline == "translation"
     assert turn.pipeline_profile == "legacy"
+    assert turn.field_availability["pipeline_profile"] == "derived"
     assert turn.answer_sanitized.model_dump() == _text("<redacted answer>")
     assert turn.question_sanitized is None
     assert "root_input" not in turn.model_dump()

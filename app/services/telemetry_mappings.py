@@ -58,12 +58,24 @@ def mapped_values(
     """
 
     return {
-        field: next(
-            (value for path in mapping.fields.get(field, ()) if (value := parse(value_at(trace, path))) is not None),
-            None,
-        )
+        field: mapped_value_and_source(mapping, trace, field, parse)[0]
         for field, parse in parsers.items()
     }
+
+
+def mapped_value_and_source(
+    mapping: ContractMapping,
+    trace: Mapping[str, Any],
+    field: str,
+    parse: Callable[[Any], Any],
+) -> tuple[Any, str | None]:
+    """Return the first mapped value and the raw path that supplied it."""
+
+    for path in mapping.fields.get(field, ()):
+        value = parse(value_at(trace, path))
+        if value is not None:
+            return value, path
+    return None, None
 
 
 def mapping_or_none(value: Any) -> Mapping[str, Any] | None:

@@ -23,6 +23,7 @@ from app.services.telemetry_mappings import (
     ContractMapping,
     default_mappings_path,
     load_mappings,
+    mapped_value_and_source,
     mapping_or_none,
     mapped_values,
 )
@@ -545,10 +546,10 @@ def _apply_historical_chat_mapping(
     mapping = mappings.get(turn.source_schema_version)
     if mapping is None:
         raise UnsupportedTelemetryEra(f"No chat mapping registered for {turn.source_schema_version!r}")
-    values = mapped_values(mapping, raw, _MAPPED_FIELDS)
     payload = turn.model_dump()
     availability = dict(turn.field_availability)
-    for field, value in values.items():
+    for field, parse in _MAPPED_FIELDS.items():
+        value, source_path = mapped_value_and_source(mapping, raw, field, parse)
         if value is None:
             continue
         if field == "user_id":
@@ -558,7 +559,9 @@ def _apply_historical_chat_mapping(
         elif field == "answer":
             payload.pop("answer_sanitized", None)
         payload[field] = value
-        availability[field] = "recorded"
+        availability[field] = (
+            "derived" if field == "pipeline_profile" and source_path == "metadata.variant" else "recorded"
+        )
     payload["field_availability"] = availability
     return _apply_chat_outcome_vocabulary(CanonicalChatTurn.model_validate(payload), outcome_vocabulary)
 
