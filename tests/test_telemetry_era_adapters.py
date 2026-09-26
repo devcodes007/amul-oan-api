@@ -342,15 +342,36 @@ def test_resolver_adapts_c4_tool_observations(era_registry):
     assert turn.pipeline_profile == "oss"
     assert turn.field_availability["pipeline_profile"] == "recorded"
     assert turn.field_availability["tool_calls"] == "derived"
-    assert turn.tool_calls == [
+    assert [call.model_dump() for call in turn.tool_calls] == [
         {
-            "observation_id": "redacted-tool-observation",
-            "name": "get_farmer_milk_collection_details",
+            "tool_name": "get_farmer_milk_collection_details",
             "call_id": "redacted-call-id",
-            "input": {"farmer_code": "redacted"},
-            "output": "<redacted tool response>",
         }
     ]
+    assert "redacted-tool-observation" not in turn.model_dump_json()
+    assert "redacted tool response" not in turn.model_dump_json()
+
+
+def test_canonical_tool_calls_strip_arguments_and_results():
+    turn = CanonicalChatTurn(
+        source_era="test",
+        source_schema_version="test.v1",
+        source_trace_name="chat.translation",
+        timestamp="2026-10-05T10:00:00Z",
+        tool_calls=[
+            {
+                "tool_name": "fetch_farmer",
+                "call_id": "stable-call-id",
+                "input": {"farmer_data": "must not persist"},
+                "output": "must not persist",
+            }
+        ],
+    )
+
+    assert [call.model_dump() for call in turn.tool_calls] == [
+        {"tool_name": "fetch_farmer", "call_id": "stable-call-id"}
+    ]
+    assert "must not persist" not in turn.model_dump_json()
 
 
 def test_resolver_rejects_an_amul_agent_trace_outside_registered_c3_c5_dates(era_registry):

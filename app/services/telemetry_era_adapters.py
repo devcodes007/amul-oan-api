@@ -671,19 +671,18 @@ def _c2_answer(
     return attributes.get("final_result") or agent_observation.get("output")
 
 
-def _tool_calls(items: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    calls = []
+def _tool_calls(items: Sequence[Mapping[str, Any]]) -> list[dict[str, str | None]]:
+    """Return tool identity only; arguments and results may contain farmer data."""
+
+    calls: list[dict[str, str | None]] = []
     for item in items:
         if item.get("type") != "TOOL":
             continue
         attributes = _attributes(item)
         calls.append(
             {
-                "observation_id": item.get("id"),
-                "name": attributes.get("gen_ai.tool.name") or item.get("name"),
+                "tool_name": _string(attributes.get("gen_ai.tool.name") or item.get("name")),
                 "call_id": attributes.get("gen_ai.tool.call.id"),
-                "input": item.get("input"),
-                "output": item.get("output"),
             }
         )
     return calls

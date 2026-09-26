@@ -17,6 +17,13 @@ class SanitizedChatText(BaseModel):
     sha256: str
 
 
+class CanonicalToolCall(BaseModel):
+    """Privacy-safe reference to a tool invocation, without tool arguments or results."""
+
+    tool_name: str | None = None
+    call_id: str | None = None
+
+
 class CanonicalChatTurn(BaseModel):
     """A stable chat-turn shape produced by version-specific Langfuse adapters.
 
@@ -51,7 +58,7 @@ class CanonicalChatTurn(BaseModel):
     ] | None = None
     served_tier: str | None = None
     full_turn_latency_ms: float | None = None
-    tool_calls: list[dict[str, Any]] | None = None
+    tool_calls: list[CanonicalToolCall] | None = None
     observation_names: list[str] = Field(default_factory=list)
     score_names: list[str] = Field(default_factory=list)
     field_availability: dict[str, FieldAvailability] = Field(default_factory=dict)
