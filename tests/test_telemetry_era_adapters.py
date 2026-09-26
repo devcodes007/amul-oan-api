@@ -10,7 +10,7 @@ from app.services.telemetry_era_adapters import (
     load_chat_mappings,
 )
 from app.services.telemetry_mappings import default_mappings_path
-from app.services.telemetry_era_registry import TelemetryEraRegistry
+from app.services.telemetry_era_registry import OutcomeVocabulary, TelemetryEraRegistry
 
 
 def _text(value: str) -> dict[str, object]:
@@ -460,17 +460,15 @@ def test_resolver_adapts_c6_root_input_and_categorical_scores(era_registry):
         (None, None),
     ],
 )
-def test_chat_outcomes_use_the_shared_dashboard_taxonomy(raw_outcome, outcome_class):
-    turn = CanonicalChatTurn(
-        source_era="test",
-        source_schema_version="test.v1",
-        source_trace_name="chat.translation",
-        timestamp="2026-10-05T10:00:00Z",
-        turn_outcome=raw_outcome,
+def test_chat_outcomes_use_the_registry_dashboard_taxonomy(raw_outcome, outcome_class):
+    vocabulary = OutcomeVocabulary.from_mapping(
+        {
+            "delivered": ["success"],
+            "failed": ["error", "cancelled"],
+        }
     )
 
-    assert turn.outcome == raw_outcome
-    assert turn.outcome_class == outcome_class
+    assert vocabulary.classify(raw_outcome) == outcome_class
 
 
 def test_resolver_refuses_low_confidence_c8_boundary(era_registry):

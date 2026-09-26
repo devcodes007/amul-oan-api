@@ -11,6 +11,49 @@ class TelemetryEraRegistryError(ValueError):
     """The registry is unavailable or does not contain a required era."""
 
 
+UNCLASSIFIED_OUTCOME = "unclassified"
+
+
+class OutcomeVocabulary:
+    """Maps recorded outcome values to shared dashboard buckets from eras.yaml."""
+
+    def __init__(self, bucket_by_outcome: Mapping[str, str]):
+        self._bucket_by_outcome = dict(bucket_by_outcome)
+
+    @classmethod
+    def from_yaml(cls, path: Path, *, section: str) -> "OutcomeVocabulary":
+        payload = load_registry_file(path)
+        raw = payload.get(section) if isinstance(payload, Mapping) else None
+        if not isinstance(raw, Mapping):
+            raise TelemetryEraRegistryError(f"telemetry/eras.yaml has no {section}")
+        return cls.from_mapping(raw)
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "OutcomeVocabulary":
+        bucket_by_outcome: dict[str, str] = {}
+        for bucket, outcomes in raw.items():
+            # Scalar notes such as pre_v3_convention describe a missing field.
+            if not isinstance(outcomes, list):
+                continue
+            for outcome in outcomes:
+                if not isinstance(outcome, str):
+                    continue
+                if bucket == UNCLASSIFIED_OUTCOME:
+                    raise TelemetryEraRegistryError(f"{UNCLASSIFIED_OUTCOME!r} is reserved for unknown outcomes")
+                if outcome in bucket_by_outcome and bucket_by_outcome[outcome] != bucket:
+                    raise TelemetryEraRegistryError(
+                        f"outcome {outcome!r} is listed under both "
+                        f"{bucket_by_outcome[outcome]!r} and {bucket!r}"
+                    )
+                bucket_by_outcome[outcome] = str(bucket)
+        return cls(bucket_by_outcome)
+
+    def classify(self, outcome: str | None) -> str | None:
+        if not outcome:
+            return None
+        return self._bucket_by_outcome.get(outcome, UNCLASSIFIED_OUTCOME)
+
+
 @dataclass(frozen=True)
 class EraBoundary:
     era_id: str

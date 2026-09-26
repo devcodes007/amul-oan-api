@@ -15,6 +15,7 @@ from app.models.telemetry_analytics import (
     LangfuseScoreSchema,
 )
 from app.services.telemetry_era_registry import (
+    OutcomeVocabulary,
     TelemetryEraRegistry,
     default_era_registry_path,
 )
@@ -405,6 +406,7 @@ def adapt_chat_trace(
     related_traces: Sequence[Mapping[str, Any]] = (),
     era_registry: TelemetryEraRegistry | None = None,
     chat_mappings: Mapping[str, ContractMapping] | None = None,
+    outcome_vocabulary: OutcomeVocabulary | None = None,
 ) -> CanonicalChatTurn:
     """Resolve chat by its stamp, or by name and timestamp when unstamped."""
 
@@ -415,14 +417,20 @@ def adapt_chat_trace(
     raw["timestamp"] = timestamp
     metadata = mapping_or_none(trace.get("metadata")) or {}
     raw["metadata"] = metadata
+    vocabulary = outcome_vocabulary or OutcomeVocabulary.from_yaml(
+        default_era_registry_path(), section="chat_outcome_vocabulary"
+    )
 
     if SCHEMA_VERSION_KEY in metadata:
-        return _adapt_stamped_chat_trace(
-            raw,
-            metadata[SCHEMA_VERSION_KEY],
-            mappings=chat_mappings or load_chat_mappings(),
-            observations=observations,
-            scores=parsed_scores,
+        return _apply_chat_outcome_vocabulary(
+            _adapt_stamped_chat_trace(
+                raw,
+                metadata[SCHEMA_VERSION_KEY],
+                mappings=chat_mappings or load_chat_mappings(),
+                observations=observations,
+                scores=parsed_scores,
+            ),
+            vocabulary,
         )
 
     registry = era_registry or TelemetryEraRegistry.from_yaml(default_era_registry_path())
@@ -459,6 +467,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     if name == ChatC3Adapter._trace_name and c3.valid_from <= timestamp < c4.valid_from:
         return _apply_historical_chat_mapping(
@@ -467,6 +476,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     if name == ChatC3Adapter._trace_name and c4.valid_from <= timestamp < c5.valid_from:
         return _apply_historical_chat_mapping(
@@ -475,6 +485,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     if name == ChatC3Adapter._trace_name and c5.valid_from <= timestamp < (c3.valid_to or c6.valid_from):
         return _apply_historical_chat_mapping(
@@ -483,6 +494,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     if name in c6.root_trace_names and c6.valid_from <= timestamp < c8.valid_from:
         extensions = _c6_extensions(timestamp, raw, parsed_scores, c6b=c6b, c6c=c6c, c7=c7)
@@ -495,6 +507,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     if name in c8.root_trace_names and timestamp >= c8.valid_from:
         if c8.valid_from_confidence != "high":
@@ -507,6 +520,7 @@ def adapt_chat_trace(
             ),
             raw,
             mappings=chat_mappings or load_chat_mappings(),
+            outcome_vocabulary=vocabulary,
         )
     raise UnsupportedTelemetryEra(f"No adapter registered for trace name={name!r} timestamp={timestamp.isoformat()}")
 
@@ -520,6 +534,7 @@ def _apply_historical_chat_mapping(
     raw: Mapping[str, Any],
     *,
     mappings: Mapping[str, ContractMapping],
+    outcome_vocabulary: OutcomeVocabulary,
 ) -> CanonicalChatTurn:
     """Overlay normal fields from YAML; structural fields stay with the adapter."""
 
@@ -541,7 +556,18 @@ def _apply_historical_chat_mapping(
         payload[field] = value
         availability[field] = "recorded"
     payload["field_availability"] = availability
-    return CanonicalChatTurn.model_validate(payload)
+    return _apply_chat_outcome_vocabulary(CanonicalChatTurn.model_validate(payload), outcome_vocabulary)
+
+
+def _apply_chat_outcome_vocabulary(
+    turn: CanonicalChatTurn, vocabulary: OutcomeVocabulary
+) -> CanonicalChatTurn:
+    """Classify recorded outcomes from the registry; absent historical values stay null."""
+
+    outcome_class = vocabulary.classify(turn.outcome)
+    availability = dict(turn.field_availability)
+    availability["outcome_class"] = "derived" if outcome_class is not None else "unavailable"
+    return turn.model_copy(update={"outcome_class": outcome_class, "field_availability": availability})
 
 
 def _adapt_stamped_chat_trace(

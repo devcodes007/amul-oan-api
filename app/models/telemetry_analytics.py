@@ -10,14 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 FieldAvailability = Literal["recorded", "derived", "unavailable"]
 
 
-_CHAT_OUTCOME_CLASSES = {
-    "success": "delivered",
-    "error": "failed",
-    "cancelled": "failed",
-}
-UNCLASSIFIED_OUTCOME = "unclassified"
-
-
 class SanitizedChatText(BaseModel):
     """Privacy-safe chat text retained by the importer."""
 
@@ -87,9 +79,6 @@ class CanonicalChatTurn(BaseModel):
             values["answer_sanitized"] = _sanitize_text(answer)
         if values.get("outcome") is None:
             values["outcome"] = turn_outcome if isinstance(turn_outcome, str) else None
-        if values.get("outcome_class") is None and values["outcome"] is not None:
-            values["outcome_class"] = _CHAT_OUTCOME_CLASSES.get(values["outcome"], UNCLASSIFIED_OUTCOME)
-
         availability = dict(values.get("field_availability") or {})
         availability.pop("root_input", None)
         availability.pop("root_output", None)
